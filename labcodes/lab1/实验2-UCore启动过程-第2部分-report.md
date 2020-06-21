@@ -15,18 +15,22 @@
   - [关于中断向量表的描述](#关于中断向量表的描述)
   - [对中断向量表的初始化](#对中断向量表的初始化)
   - [对时钟中断部分的完善处理](#对时钟中断部分的完善处理)
+- [扩展练习 实现内核态与用户态相互转换](#扩展练习-实现内核态与用户态相互转换)
 - [附录](#附录)
   - [`kern/debug/kdebug.c` 中的 `print_stackframe` 函数](#kerndebugkdebugc-中的-print_stackframe-函数)
   - [`kern/trap/trap.c` 中的 `idt_init` 函数](#kerntraptrapc-中的-idt_init-函数)
   - [`kern/trap/trap.c` 中的 `trap_dispatch` 函数时钟中断部分](#kerntraptrapc-中的-trap_dispatch-函数时钟中断部分)
+  - [拓展练习相关代码](#拓展练习相关代码)
 
 <!-- 文中使用到的锚点 -->
-[kedebug.c]: kern/kdebug.c
-[trap.c]: kern/trap.c
+[kedebug.c]: kern/debug/kdebug.c
+[trap.c]: kern/trap/trap.c
+[init.c]: kern/init/init.c
+[练习3]: #练习3-分析-bootloader-进入保护模式的过程
 [附录1]: #kerndebugkdebugc-中的-print_stackframe-函数
 [附录2]: #kerntraptrapc-中的-idt_init-函数
 [附录3]: #kerntraptrapc-中的-trap_dispatch-函数时钟中断部分
-[练习3]:#练习3-分析-bootloader-进入保护模式的过程
+[附录4]: #拓展练习相关代码
 
 ## 练习3 分析 bootloader 进入保护模式的过程
 
@@ -313,13 +317,21 @@ ebp 寄存器与 ss 段寄存器组合构成 `ss:ebp`。它指向的位置在堆
 
 ### 对中断向量表的初始化
 
-根据项目提供的注释，在 `kern/trap/vectors.S` 中提供了 `__vectors` 的相关定义。使用 `__vectors` 和宏函数 `SETGATE` 可以对中断向量表 `idt` 进行初始化。`SETGATE` 中的参数可以根据课件中给的提示进行设置。最后还要调用 `lidt` 指令，传递相应的基址和限制记录中断向量表的信息。详细代码可见结尾附录 [idt_init 函数的实现][附录2]或 [trap.c][trap.c] 文件。
+根据项目提供的注释，在 `kern/trap/vectors.S` 中提供了 `__vectors` 的相关定义。使用 `__vectors` 和宏函数 `SETGATE` 可以对中断向量表 `idt` 进行初始化。`SETGATE` 中的参数可以根据课件中给的提示进行设置。值得注意的是，`SETGATE` 中的 `sel` 参数需要在 `kern/mm/memlayout.h` 中找到全局代码段选择子对应的数值 `GD_KTEXT`。最后还要调用 `lidt` 指令，传递相应的基址和限制记录中断向量表的信息。详细代码可见结尾附录 [idt_init 函数的实现][附录2]或 [trap.c][trap.c] 文件。
 
 > 除了系统调用中断(T_SYSCALL)使用陷阱门描述符且权限为用户态权限以外,其它中断均使用特权级(DPL)为0的中断门描述符,权限为内核态权限。
 
 ### 对时钟中断部分的完善处理
 
 根据项目的注释，我们对时钟中断进行了自定义处理：每经历 100 次时钟中断，输出一次 `100 ticks`。代码比较简单，同样具体代码见详细代码可见结尾附录 [trap_dispatch 函数时钟中断部分的实现][附录3]或 [trap.c][trap.c] 文件。
+
+## 扩展练习 实现内核态与用户态相互转换
+
+> 增加 syscall 功能,即增加一用户态函数(可执行一特定系统调用:获得时钟计数值),当内核初始完毕后,可从内核态返回到用户态的函数,而用户态的函数又通过系统调用得到内核态的服务。
+
+经过反复查阅网上资料，大致上了解实现用户态与内核态转换的方法。核心思想通过把所有的寄存器的值 `push` 入栈中，通过一个陷入帧对栈里保存的值进行修改。最后通过 `pop` 修改寄存器的值。实现对 `cs`、`ds`、`es`、`ss`、`eflags` 等寄存器的值进行修改，进入用户态/核心态。
+
+详细代码参见[附录][附录4]或者 [trap.c][trap.c] 文件和 [init.c][init.c] 文件。
 
 ## 附录
 
@@ -369,3 +381,57 @@ case IRQ_OFFSET + IRQ_TIMER:
     }
     break;
 ```
+
+### 拓展练习相关代码
+
+- `kern/init/init.c` 相关改动
+
+    在 `kern_init` 函数末尾增加一句：`lab1_switch_test();`。
+
+    完成函数 `lab1_switch_to_user` 和 `lab1_switch_to_kernel`：
+
+    ```c
+    static void
+    lab1_switch_to_user(void) {
+        //LAB1 CHALLENGE 1 : TODO
+        __asm__ __volatile__(
+            "sub $8, %%esp\n"
+            "int %0\n"
+            "movl %%ebp, %%esp"
+            :
+            : "i"(T_SWITCH_TOU)
+        );
+    }
+
+    static void
+    lab1_switch_to_kernel(void) {
+        //LAB1 CHALLENGE 1 :  TODO
+        __asm__ __volatile__(
+            "int %0\n"
+            "movl %%ebp, %%esp"
+            :
+            : "i"(T_SWITCH_TOK)
+        );
+    }
+    ```
+
+- `kern/trap/trap.c` 对 `trap_dispatch` 函数的改动
+
+    ```c
+    //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
+    case T_SWITCH_TOU:
+        tf->tf_cs = USER_CS;
+        tf->tf_ds = USER_DS;
+        tf->tf_es = USER_DS;
+        tf->tf_ss = USER_DS;
+
+        tf->tf_eflags |= FL_IOPL_MASK;
+        break;
+    case T_SWITCH_TOK:
+        tf->tf_cs = KERNEL_CS;
+        tf->tf_ds = KERNEL_DS;
+        tf->tf_es = KERNEL_DS;
+
+        tf->tf_eflags &= ~FL_IOPL_MASK;
+        break;
+    ```
