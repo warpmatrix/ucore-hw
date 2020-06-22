@@ -35,6 +35,7 @@ static struct pseudodesc idt_pd = {
 void
 idt_init(void) {
      /* LAB1 18342055 : STEP 2 */
+     /* handle the timer interrupt */
     extern uintptr_t __vectors[];
     for (int i = 0; i < sizeof(idt) / sizeof(struct gatedesc); i++) {
         SETGATE(idt[i], 0, GD_KTEXT, __vectors[i], DPL_KERNEL);
