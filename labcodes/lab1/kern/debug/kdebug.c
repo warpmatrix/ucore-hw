@@ -293,7 +293,7 @@ print_stackframe(void) {
     /* LAB1 18342055 : STEP 1 */
     uint32_t ebp = read_ebp();
     uint32_t eip = read_eip();
-    for (int i = 0; i < STACKFRAME_DEPTH; i++) {
+    for (int i = 0; ebp && i < STACKFRAME_DEPTH; i++) {
         cprintf("ebp:0x%08x eip:0x%08x ", ebp, eip);
         uint32_t *args = (uint32_t *) ebp + 2;
         for (int ofst = 0; ofst < 4; ofst++) {
