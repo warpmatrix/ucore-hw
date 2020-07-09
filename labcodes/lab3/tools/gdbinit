@@ -1,5 +1,5 @@
 file bin/kernel
 target remote localhost: 1234
 set architecture i8086
-b check_pgdir
+b lab1_switch_test
 continue
