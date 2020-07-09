@@ -349,7 +349,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     pte_t *ptep=NULL;
     /* LAB3 EXERCISE 1: 18342055 */
     ptep = get_pte(mm->pgdir, addr, 1);
-    if (*ptep == NULL) {
+    if (*ptep == 0) {
         if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) {
             cprintf("pgdir_alloc_page failed\n");
             goto failed;
