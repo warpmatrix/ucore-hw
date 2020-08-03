@@ -436,6 +436,10 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     pte_t *ptep=NULL;
     /* LAB3 EXERCISE 1: 18342055 */
     ptep = get_pte(mm->pgdir, addr, 1);
+    if (ptep == NULL) {
+        cprintf("get_pte in do_pgfault failed\n");
+        goto failed;
+    }
     if (*ptep == 0) {
         if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) {
             cprintf("pgdir_alloc_page failed\n");
@@ -445,7 +449,11 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
         /* LAB3 EXERCISE 2: 18342055 */
         if(swap_init_ok) {
             struct Page *page=NULL;
-            swap_in(mm, addr, &page);
+            ret = swap_in(mm, addr, &page);
+            if (ret != 0) {
+                cprintf("swap_in in do_pgfault failed\n");
+                goto failed;
+            }
             page_insert(mm->pgdir, page, addr, perm);
             swap_map_swappable(mm, addr, page, 1);
             page->pra_vaddr = addr;

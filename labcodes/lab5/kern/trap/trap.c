@@ -208,12 +208,13 @@ trap_dispatch(struct trapframe *tf) {
     LAB3 : If some page replacement algorithm(such as CLOCK PRA) need tick to change the priority of pages,
     then you can add code here. 
 #endif
-        /* LAB1 YOUR CODE : STEP 3 */
+        /* LAB1 18342055 : STEP 3 */
         /* handle the timer interrupt */
         ticks++;
         if (ticks % TICK_NUM == 0) {
-            print_ticks();
+            // print_ticks();  // comment for make grade
             /* LAB5 18342055 */
+            assert(current);
             current->need_resched = 1;
         }
         break;

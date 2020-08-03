@@ -377,14 +377,9 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     res = copy_mm(clone_flags, proc);
     if (res != 0) goto bad_fork_cleanup_kstack;
     copy_thread(proc, stack, tf);
-    bool intr_flag;
-    local_intr_save(intr_flag);
-    {
     proc->pid = get_pid();
     hash_proc(proc);
     set_links(proc);
-    }
-    local_intr_restore(intr_flag);
 
     wakeup_proc(proc);
     ret = proc->pid;
