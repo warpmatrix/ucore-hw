@@ -212,17 +212,15 @@ trap_dispatch(struct trapframe *tf) {
         /* LAB1 18342055 : STEP 3 */
         /* handle the timer interrupt */
         ticks++;
-        if (ticks % TICK_NUM == 0) {
-            // print_ticks();  // comment for make grade
-            /* LAB5 18342055 */
-            assert(current);
-            current->need_resched = 1;
-        }
-        /* LAB6 YOUR CODE */
-        /* you should upate you lab5 code
-         * IMPORTANT FUNCTIONS:
-	     * sched_class_proc_tick
-         */
+        /* LAB5 18342055 */
+        // comment for make grade
+        // if (ticks % TICK_NUM == 0) {
+        //     print_ticks();  
+        // }
+        assert(current);
+        current->need_resched = 1;
+        /* LAB6 18342055 */
+	    sched_class_proc_tick(current);
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
