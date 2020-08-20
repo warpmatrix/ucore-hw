@@ -107,12 +107,9 @@ alloc_proc(void) {
         proc->rq = NULL;
         list_init(&proc->run_link);
         proc->time_slice = 0;
-    /*
-     * below fields(add in LAB6) in proc_struct need to be initialized
-     *     skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
-     *     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process
-     *     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
-     */
+        skew_heap_init(&proc->lab6_run_pool);   // FOR LAB6 ONLY: the entry in the run pool
+        proc->lab6_stride = 0;                  // FOR LAB6 ONLY: the current stride of the process
+        proc->lab6_priority = 0;                // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
     }
     return proc;
 }
