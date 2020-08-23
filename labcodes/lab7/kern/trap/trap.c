@@ -220,12 +220,9 @@ trap_dispatch(struct trapframe *tf) {
         assert(current);
         current->need_resched = 1;
         /* LAB6 18342055 */
-	    sched_class_proc_tick(current);
-        /* LAB7 YOUR CODE */
-        /* you should upate you lab6 code
-         * IMPORTANT FUNCTIONS:
-	     * run_timer_list
-         */
+	    // sched_class_proc_tick(current);
+        /* LAB7 18342055 */
+	    run_timer_list();
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
