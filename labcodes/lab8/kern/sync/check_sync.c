@@ -81,7 +81,7 @@ semaphore_t s[N]; /* 每个哲学家一个信号量 */
 
 struct proc_struct *philosopher_proc_sema[N];
 
-void phi_test_sema(i) /* i：哲学家号码从0到N-1 */
+void phi_test_sema(int i) /* i：哲学家号码从0到N-1 */
 { 
     if(state_sema[i]==HUNGRY&&state_sema[LEFT]!=EATING
             &&state_sema[RIGHT]!=EATING)
@@ -167,9 +167,8 @@ struct proc_struct *philosopher_proc_condvar[N]; // N philosopher
 int state_condvar[N];                            // the philosopher's state: EATING, HUNGARY, THINKING  
 monitor_t mt, *mtp=&mt;                          // monitor
 
-void phi_test_condvar (i) { 
-    if(state_condvar[i]==HUNGRY&&state_condvar[LEFT]!=EATING
-            &&state_condvar[RIGHT]!=EATING) {
+void phi_test_condvar(int i) { 
+    if(state_condvar[i]==HUNGRY&&state_condvar[RIGHT]!=EATING) {
         cprintf("phi_test_condvar: state_condvar[%d] will eating\n",i);
         state_condvar[i] = EATING ;
         cprintf("phi_test_condvar: signal self_cv[%d] \n",i);
@@ -179,30 +178,35 @@ void phi_test_condvar (i) {
 
 
 void phi_take_forks_condvar(int i) {
-     down(&(mtp->mutex));
-//--------into routine in monitor--------------
-     // LAB7 EXERCISE1: YOUR CODE
-     // I am hungry
-     // try to get fork
-//--------leave routine in monitor--------------
-      if(mtp->next_count>0)
-         up(&(mtp->next));
-      else
-         up(&(mtp->mutex));
+    down(&(mtp->mutex));
+    //--------into routine in monitor--------------
+    // LAB7 EXERCISE1: 18342055
+    state_condvar[i] = HUNGRY;
+    phi_test_condvar(i);
+    if (state_condvar[i] != EATING) {
+        cprintf("phi_take_forks_condvar: %d didn’t get fork and will wait", i);
+        cond_wait(&mtp->cv[i]);
+    }
+    //--------leave routine in monitor--------------
+    if(mtp->next_count>0)
+        up(&(mtp->next));
+    else
+        up(&(mtp->mutex));
 }
 
 void phi_put_forks_condvar(int i) {
-     down(&(mtp->mutex));
-
-//--------into routine in monitor--------------
-     // LAB7 EXERCISE1: YOUR CODE
-     // I ate over
-     // test left and right neighbors
-//--------leave routine in monitor--------------
-     if(mtp->next_count>0)
+    down(&(mtp->mutex));
+    //--------into routine in monitor--------------
+    // LAB7 EXERCISE1: 18342055
+    state_condvar[i] = THINKING;
+    phi_test_condvar(LEFT);
+    phi_test_condvar(RIGHT);
+    //--------leave routine in monitor--------------
+    if(mtp->next_count>0) {
         up(&(mtp->next));
-     else
+    } else {
         up(&(mtp->mutex));
+    }
 }
 
 //---------- philosophers using monitor (condition variable) ----------------------
