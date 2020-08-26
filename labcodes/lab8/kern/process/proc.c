@@ -422,6 +422,31 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     proc = alloc_proc();
     if (proc == NULL) goto fork_out;
     proc->parent = current;
+    //LAB8:EXERCISE2 YOUR CODE  HINT:how to copy the fs in parent's proc_struct?
+    /*
+     * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
+     * MACROs or Functions:
+     *   alloc_proc:   create a proc struct and init fields (lab4:exercise1)
+     *   setup_kstack: alloc pages with size KSTACKPAGE as process kernel stack
+     *   copy_mm:      process "proc" duplicate OR share process "current"'s mm according clone_flags
+     *                 if clone_flags & CLONE_VM, then "share" ; else "duplicate"
+     *   copy_thread:  setup the trapframe on the  process's kernel stack top and
+     *                 setup the kernel entry point and stack of process
+     *   hash_proc:    add proc into proc hash_list
+     *   get_pid:      alloc a unique pid for process
+     *   wakeup_proc:  set proc->state = PROC_RUNNABLE
+     * VARIABLES:
+     *   proc_list:    the process set's list
+     *   nr_process:   the number of process set
+     */
+
+    //    1. call alloc_proc to allocate a proc_struct
+    //    2. call setup_kstack to allocate a kernel stack for child process
+    //    3. call copy_mm to dup OR share mm according clone_flag
+    //    4. call copy_thread to setup tf & context in proc_struct
+    //    5. insert proc_struct into hash_list && proc_list
+    //    6. call wakeup_proc to make the new child process RUNNABLE
+    //    7. set ret vaule using child proc's pid
 	//LAB5 18342055 : (update LAB4 steps)
     assert(current->wait_state == 0);
     
