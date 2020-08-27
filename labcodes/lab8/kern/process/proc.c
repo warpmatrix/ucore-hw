@@ -113,7 +113,8 @@ alloc_proc(void) {
         skew_heap_init(&proc->lab6_run_pool);   // FOR LAB6 ONLY: the entry in the run pool
         proc->lab6_stride = 0;                  // FOR LAB6 ONLY: the current stride of the process
         proc->lab6_priority = 0;                // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
-    //LAB8:EXERCISE2 YOUR CODE HINT:need add some code to init fs in proc_struct, ...
+        //LAB8:EXERCISE2 18342055
+        proc->filesp = NULL;
     }
     return proc;
 }
@@ -422,40 +423,18 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     proc = alloc_proc();
     if (proc == NULL) goto fork_out;
     proc->parent = current;
-    //LAB8:EXERCISE2 YOUR CODE  HINT:how to copy the fs in parent's proc_struct?
-    /*
-     * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
-     * MACROs or Functions:
-     *   alloc_proc:   create a proc struct and init fields (lab4:exercise1)
-     *   setup_kstack: alloc pages with size KSTACKPAGE as process kernel stack
-     *   copy_mm:      process "proc" duplicate OR share process "current"'s mm according clone_flags
-     *                 if clone_flags & CLONE_VM, then "share" ; else "duplicate"
-     *   copy_thread:  setup the trapframe on the  process's kernel stack top and
-     *                 setup the kernel entry point and stack of process
-     *   hash_proc:    add proc into proc hash_list
-     *   get_pid:      alloc a unique pid for process
-     *   wakeup_proc:  set proc->state = PROC_RUNNABLE
-     * VARIABLES:
-     *   proc_list:    the process set's list
-     *   nr_process:   the number of process set
-     */
-
-    //    1. call alloc_proc to allocate a proc_struct
-    //    2. call setup_kstack to allocate a kernel stack for child process
-    //    3. call copy_mm to dup OR share mm according clone_flag
-    //    4. call copy_thread to setup tf & context in proc_struct
-    //    5. insert proc_struct into hash_list && proc_list
-    //    6. call wakeup_proc to make the new child process RUNNABLE
-    //    7. set ret vaule using child proc's pid
-	//LAB5 18342055 : (update LAB4 steps)
     assert(current->wait_state == 0);
-    
+
     int res = setup_kstack(proc);
     if (res != 0) goto bad_fork_cleanup_proc;
 
-    res = copy_mm(clone_flags, proc);
+    //LAB8:EXERCISE2 18342055
+    res = copy_files(clone_flags, proc);
     if (res != 0) goto bad_fork_cleanup_kstack;
+    res = copy_mm(clone_flags, proc);
+    if (res != 0) goto bad_fork_cleanup_fs;
     copy_thread(proc, stack, tf);
+	//LAB5 18342055 : (update LAB4 steps)
     bool intr_flag;
     local_intr_save(intr_flag);
     {
@@ -554,30 +533,156 @@ load_icode_read(int fd, void *buf, size_t len, off_t offset) {
   
 static int
 load_icode(int fd, int argc, char **kargv) {
-    /* LAB8:EXERCISE2 YOUR CODE  HINT:how to load the file with handler fd  in to process's memory? how to setup argc/argv?
-     * MACROs or Functions:
-     *  mm_create        - create a mm
-     *  setup_pgdir      - setup pgdir in mm
-     *  load_icode_read  - read raw data content of program file
-     *  mm_map           - build new vma
-     *  pgdir_alloc_page - allocate new memory for  TEXT/DATA/BSS/stack parts
-     *  lcr3             - update Page Directory Addr Register -- CR3
-     */
-	/* (1) create a new mm for current process
-     * (2) create a new PDT, and mm->pgdir= kernel virtual addr of PDT
-     * (3) copy TEXT/DATA/BSS parts in binary to memory space of process
-     *    (3.1) read raw data content in file and resolve elfhdr
-     *    (3.2) read raw data content in file and resolve proghdr based on info in elfhdr
-     *    (3.3) call mm_map to build vma related to TEXT/DATA
-     *    (3.4) callpgdir_alloc_page to allocate page for TEXT/DATA, read contents in file
-     *          and copy them into the new allocated pages
-     *    (3.5) callpgdir_alloc_page to allocate pages for BSS, memset zero in these pages
-     * (4) call mm_map to setup user stack, and put parameters into user stack
-     * (5) setup current process's mm, cr3, reset pgidr (using lcr3 MARCO)
-     * (6) setup uargc and uargv in user stacks
-     * (7) setup trapframe for user environment
-     * (8) if up steps failed, you should cleanup the env.
-     */
+    /* LAB8:EXERCISE2 18342055 */
+    if (current->mm != NULL) {
+        panic("load_icode: current->mm must be empty.\n");
+    }
+    int ret = -E_NO_MEM;
+	// (1) create a new mm for current process
+    struct mm_struct *mm = mm_create();
+    if (mm == NULL) goto bad_mm;
+
+    // (2) create a new PDT, and mm->pgdir= kernel virtual addr of PDT
+    ret = setup_pgdir(mm);
+    if (ret != 0) goto bad_pgdir_cleanup_mm;
+
+    // (3) copy TEXT/DATA/BSS parts in binary to memory space of process
+    // (3.1) read raw data content in file and resolve elfhdr
+    struct elfhdr elf;
+    ret = load_icode_read(fd, &elf, sizeof(elf), 0);
+    if (ret != 0) goto bad_elf_cleanup_pgdir;
+    if (elf.e_magic != ELF_MAGIC) {
+        ret = -E_INVAL_ELF;
+        goto bad_elf_cleanup_pgdir;
+    }
+    // (3.2) read raw data content in file and resolve proghdr based on info in elfhdr
+    uint32_t vm_flags, perm;
+    off_t phoff = elf.e_phoff;
+    struct proghdr ph;
+    for (uint32_t phnum = 0; phnum < elf.e_phnum; phnum++) {
+        ret = load_icode_read(fd, &ph, sizeof(ph), phoff + phnum * sizeof(ph));
+        if (ret != 0) goto bad_cleanup_mmap;
+        if (ph.p_type != ELF_PT_LOAD) continue;
+        if (ph.p_filesz > ph.p_memsz) {
+            ret = -E_INVAL_ELF;
+            goto bad_cleanup_mmap;
+        }
+        if (ph.p_filesz == 0) continue;
+        // (3.3) call mm_map to build vma related to TEXT/DATA
+        vm_flags = 0;
+        perm = PTE_U;
+        if (ph.p_flags & ELF_PF_X) vm_flags |= VM_EXEC;
+        if (ph.p_flags & ELF_PF_W) vm_flags |= VM_WRITE;
+        if (ph.p_flags & ELF_PF_R) vm_flags |= VM_READ;
+        if (vm_flags & VM_WRITE) perm |= PTE_W;
+        ret = mm_map(mm, ph.p_va, ph.p_memsz, vm_flags, NULL);
+        if (ret != 0) goto bad_cleanup_mmap;
+
+        off_t from = ph.p_offset;
+        intptr_t start = ph.p_va;
+        intptr_t end = ph.p_va + ph.p_filesz;
+        intptr_t la = ROUNDDOWN(start, PGSIZE);
+        ret = -E_NO_MEM;
+        size_t off, size;
+        struct Page *page;
+        for (; start < end; start += size) {
+            // (3.4) call pgdir_alloc_page to allocate page for TEXT/DATA, read contents in file
+            //  and copy them into the new allocated pages
+            page = pgdir_alloc_page(mm->pgdir, la, perm);
+            if (page == NULL) {
+                ret = -E_NO_MEM;
+                goto bad_cleanup_mmap;
+            }
+            off = start - la;
+            size = PGSIZE - off;
+            la += PGSIZE;
+            if (end < la) size -= la - end;
+            ret = load_icode_read(fd, page2kva(page) + off, size, from);
+            if (ret != 0) goto bad_cleanup_mmap;
+            from += size;
+        }
+        // (3.5) call pgdir_alloc_page to allocate pages for BSS, memset zero in these pages
+        end = ph.p_va + ph.p_memsz;
+        if (start < la) {
+            if (start == end) continue;
+            off = start + PGSIZE - la;
+            size = PGSIZE - off;
+            if (end < la) size -= la - end;
+            memset(page2kva(page) + off, 0, size);
+            start += size;
+            assert((end < la && start == end) || (end >= la && start == la));
+        }
+        for (; start < end; start += size) {
+            page = pgdir_alloc_page(mm->pgdir, la, perm);
+            if (page == NULL) {
+                ret = -E_NO_MEM;
+                goto bad_cleanup_mmap;
+            }
+            off = start - la;
+            size = PGSIZE - off;
+            la += PGSIZE;
+            if (end < la) size -= la - end;
+            memset(page2kva(page) + off, 0, size);
+        }
+    }
+    sysfile_close(fd);
+    // (4) call mm_map to setup user stack, and put parameters into user stack
+    vm_flags = VM_READ | VM_WRITE | VM_STACK;
+    ret = mm_map(mm, USTACKTOP - USTACKSIZE, USTACKSIZE, vm_flags, NULL);
+    if (ret != 0) goto bad_cleanup_mmap;
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-PGSIZE , PTE_USER) != NULL);
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-2*PGSIZE , PTE_USER) != NULL);
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-3*PGSIZE , PTE_USER) != NULL);
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-4*PGSIZE , PTE_USER) != NULL);
+
+    // (5) setup current process's mm, cr3, reset pgidr (using lcr3 MARCO)
+    mm_count_inc(mm);
+    current->mm = mm;
+    current->cr3 = PADDR(mm->pgdir);
+    lcr3(PADDR(mm->pgdir));
+
+    // (6) setup uargc and uargv in user stacks
+    assert(argc >= 0 && argc <= EXEC_MAX_ARG_NUM);
+    uint32_t argsize = 0;
+    for (int i = 0; i < argc; i++) {
+        // add size with '\0;
+        argsize += 1 + strlen(kargv[i]);
+    }
+    // align argsize
+    argsize = (argsize / sizeof(long) + 1) * sizeof(long);
+    // push argv
+    uint32_t stacktop = USTACKTOP - argsize;
+    char** uargv = (char **)(stacktop  - argc * sizeof(*uargv));
+    argsize = 0;
+    for (int i = 0; i < argc; i++) {
+        uargv[i] = strcpy((char *)(stacktop + argsize), kargv[i]);
+        argsize += 1 + strlen(kargv[i]);
+    }
+    // push argc
+    stacktop = (uintptr_t)uargv - sizeof(argc);
+    *(int *)stacktop = argc;
+
+    // (7) setup trapframe for user environment
+    struct trapframe *tf = current->tf;
+    memset(tf, 0, sizeof(struct trapframe));
+    /* LAB5:EXERCISE1 18342055 */
+    tf->tf_cs = USER_CS;
+    tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+    tf->tf_esp = stacktop;
+    tf->tf_eip = elf.e_entry;
+    tf->tf_eflags = FL_IF;
+    ret = 0;
+out:
+    return ret;
+// (8) if up steps failed, you should cleanup the env.
+bad_cleanup_mmap:
+    exit_mmap(mm);
+bad_elf_cleanup_pgdir:
+    put_pgdir(mm);
+bad_pgdir_cleanup_mm:
+    mm_destroy(mm);
+bad_mm:
+    goto out;
 }
 
 // this function isn't very correct in LAB8
